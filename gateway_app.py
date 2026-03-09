@@ -17,9 +17,15 @@ async def run_cloudflare(app:FastAPI):
 
 app=FastAPI(lifespan=run_cloudflare)
 
-@app.post("/gateway_send")
+@app.post(f"/{post_auth}")
 def recieve(packet: GatewayPacket):
     status=store_in_db(packet)
     print(status)
 
     return status
+
+@app.get("/GateWay/Health")
+def check():
+    print("server connection health check intended!!")
+    
+    return {"status": 200, "msg": "connection working!!!"} 
