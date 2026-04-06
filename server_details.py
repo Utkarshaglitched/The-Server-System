@@ -1,2 +1,2 @@
 gateway_post_url=""
-post_auth=""
+post_auth="23cv324r5f"

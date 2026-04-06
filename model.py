@@ -12,4 +12,13 @@ class serverTable(base):
     stored_at = Column(DateTime, default=datetime.utcnow)
     data=Column(Text)
 
+
+class firmwareTable(base):
+    __tablename__="firmware_url"
+    id=Column(Integer,primary_key=True)
+    target_gtw=Column(String)
+    target_gtw_loc=Column(String)
+    target_gtw_nodeID=Column(String)
+    firmware_path=Column(String)
+    
 base.metadata.create_all(bind=eng)

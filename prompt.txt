@@ -1,0 +1,4 @@
+no bro
+didnt fix it at all
+let me highlight the issue once again
+what is happening is when I land on page locations open I click on either of em, then gateways option open here I should see what gateway is online or offline which I am able to but the issue is when ever the url is trying to poll to server for active status the whole page is being refreshed, it results in where ever I am after every poll for active status I land on iniotial page
