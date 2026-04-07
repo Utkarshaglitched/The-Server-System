@@ -195,7 +195,7 @@ def send_url_data(loc:str,gateway:str):
             {
                 "target_node":i.target_gtw_nodeID,
                 "file_name":file_name,
-                "download_url":f"/firmware/download/{file_name}"
+                "download_url":f"/download/firmware/{file_name}"
             }
         )
     return{

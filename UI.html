@@ -27,6 +27,10 @@
     .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 2s ease-in-out infinite; flex-shrink: 0; }
     @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
 
+    /* OTA Button */
+    .ota-btn { margin-left: 16px; background: none; border: 1px solid var(--border); color: var(--accent); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.8rem; transition: border-color 0.2s; }
+    .ota-btn:hover { border-color: var(--accent); }
+
     /* VIEWPORT */
     #viewport { flex: 1; position: relative; overflow: hidden; }
     .page { position: absolute; inset: 0; overflow-y: auto; padding: 28px 28px 48px; display: flex; flex-direction: column; gap: 20px; transition: transform 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.42s cubic-bezier(0.4,0,0.2,1); }
@@ -141,12 +145,21 @@
     .log-entry.open .log-body { display: block; }
     .log-body pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--accent); overflow-x: auto; line-height: 1.6; }
     .count-badge { font-size: 0.7rem; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
+
+    /* OTA Styles */
+    .ota-step { display: flex; flex-direction: column; gap: 20px; }
+    .ota-step.hidden { display: none; }
+    .ota-nodes { display: flex; flex-direction: column; gap: 10px; }
+    .ota-node { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+    .ota-node input[type="checkbox"] { margin: 0; }
+    .ota-node label { flex: 1; font-family: 'Space Mono', monospace; font-size: 0.9rem; }
   </style>
 </head>
 <body>
 <div id="app">
   <header>
     <div class="logo">⬡ IoT Gateway</div>
+    <button class="ota-btn" onclick="enterOTA()">OTA Update</button>
     <nav class="breadcrumb" id="breadcrumb">
       <span class="crumb active" onclick="goHome()">Locations</span>
     </nav>
@@ -249,6 +262,45 @@
       </div>
     </div>
 
+    <!-- PAGE 5: OTA -->
+    <div class="page hidden-right" id="page-ota">
+      <button class="back-btn" onclick="goHome()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Back to Locations
+      </button>
+      <div>
+        <div class="page-label">Firmware Update</div>
+        <div class="page-heading">OTA <span>Update</span></div>
+      </div>
+
+      <div id="ota-step1" class="ota-step">
+        <div class="search-wrap">
+          <label for="ota-file">Select Firmware File:</label>
+          <input type="file" id="ota-file" accept=".bin,.hex,.elf,.zip" style="margin-top: 10px;" />
+        </div>
+        <button class="mode-btn" onclick="nextStep(2)">Next</button>
+      </div>
+
+      <div id="ota-step2" class="ota-step hidden">
+        <div class="page-label">Step 2</div>
+        <div class="page-heading">Select a <span>Location</span></div>
+        <div id="ota-loc-grid" class="card-grid"></div>
+      </div>
+
+      <div id="ota-step3" class="ota-step hidden">
+        <div class="page-label">Step 3</div>
+        <div class="page-heading">Select a <span>Gateway</span></div>
+        <div id="ota-gw-grid" class="card-grid"></div>
+      </div>
+
+      <div id="ota-step4" class="ota-step hidden">
+        <div class="page-label">Step 4</div>
+        <div class="page-heading">Select <span>Nodes</span></div>
+        <div id="ota-nodes-list" class="ota-nodes"></div>
+        <button class="export-btn" onclick="submitOTA()">Submit Updates</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -260,6 +312,7 @@
   let currentLoc = "", currentGW = "", currentNode = "", currentMode = "live";
   let pollTimer = null, statusTimer = null, gwStatusTimer = null;
   let liveHistory = [], knownIds = new Set(), snapshotData = [];
+  let otaFile = null, otaLoc = "", otaGw = "";
 
   // gateway_id -> { status, last_seen, delay_seconds }
   // keyed as "loc::gwid" so same gwid in different locations doesn't collide
@@ -273,7 +326,7 @@
   let gwCardPollers = {};
 
   // ── PAGE NAV ──
-  const PAGE_ORDER = ["locations","gateways","nodes","logs"];
+  const PAGE_ORDER = ["locations","gateways","nodes","logs","ota"];
   function showPage(name) {
     const ti = PAGE_ORDER.indexOf(name);
     PAGE_ORDER.forEach((k, i) => {
@@ -476,6 +529,141 @@
     currentLoc = currentGW = currentNode = "";
     showPage("locations");
     setBreadcrumb([{ label: "Locations" }]);
+  }
+
+  function enterOTA() {
+    stopPoll(); stopGWBannerPolling(); stopGatewayCardPolling();
+    showPage("ota");
+    setBreadcrumb([{ label: "OTA Update" }]);
+    initOTA();
+  }
+
+  function initOTA() {
+    otaFile = null; otaLoc = ""; otaGw = "";
+    document.getElementById("ota-step1").classList.remove("hidden");
+    document.getElementById("ota-step2").classList.add("hidden");
+    document.getElementById("ota-step3").classList.add("hidden");
+    document.getElementById("ota-step4").classList.add("hidden");
+    document.getElementById("ota-file").value = "";
+  }
+
+  function nextStep(n) {
+    if (n === 2) {
+      const fileInput = document.getElementById("ota-file");
+      if (!fileInput.files[0]) {
+        alert("Please select a firmware file.");
+        return;
+      }
+      otaFile = fileInput.files[0];
+      loadOTALocations();
+    }
+    document.getElementById("ota-step" + (n - 1)).classList.add("hidden");
+    document.getElementById("ota-step" + n).classList.remove("hidden");
+  }
+
+  async function loadOTALocations() {
+    try {
+      const r = await fetch(API + "/GateWay/registered");
+      const d = await r.json();
+      const list = d.data || [];
+      renderOTALocations(list);
+    } catch (e) {
+      alert("Failed to load locations: " + e.message);
+    }
+  }
+
+  function renderOTALocations(list) {
+    const grid = document.getElementById("ota-loc-grid");
+    grid.innerHTML = "";
+    list.forEach((loc, i) => {
+      const c = document.createElement("div");
+      c.className = "card";
+      c.style.animationDelay = (i * 0.05) + "s";
+      c.innerHTML = `
+        <div class="card-top"><div class="card-icon">📍</div></div>
+        <div class="card-name">${loc}</div>
+        <div class="card-meta">Gateway Location</div>
+        <svg class="card-arrow" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
+      c.onclick = () => { otaLoc = loc; nextStep(3); loadOTAGateways(loc); };
+      grid.appendChild(c);
+    });
+  }
+
+  async function loadOTAGateways(loc) {
+    try {
+      const r = await fetch(`${API}/GateWay/${enc(loc)}/gateways`);
+      const d = await r.json();
+      const gws = d.gateways || [];
+      renderOTAGateways(gws, loc);
+    } catch (e) {
+      alert("Failed to load gateways: " + e.message);
+    }
+  }
+
+  function renderOTAGateways(list, loc) {
+    const grid = document.getElementById("ota-gw-grid");
+    grid.innerHTML = "";
+    list.forEach((gwid, i) => {
+      const c = document.createElement("div");
+      c.className = "card";
+      c.style.animationDelay = (i * 0.05) + "s";
+      c.innerHTML = `
+        <div class="card-top"><div class="card-icon">📡</div></div>
+        <div class="card-name">${gwid}</div>
+        <div class="card-meta">${loc}</div>
+        <svg class="card-arrow" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
+      c.onclick = () => { otaGw = gwid; nextStep(4); loadOTANodes(loc, gwid); };
+      grid.appendChild(c);
+    });
+  }
+
+  async function loadOTANodes(loc, gwid) {
+    try {
+      const r = await fetch(`${API}/GateWay/${enc(loc)}/${enc(gwid)}`);
+      const d = await r.json();
+      const nodes = d.nodes || [];
+      renderOTANodes(nodes);
+    } catch (e) {
+      alert("Failed to load nodes: " + e.message);
+    }
+  }
+
+  function renderOTANodes(list) {
+    const cont = document.getElementById("ota-nodes-list");
+    cont.innerHTML = "";
+    list.forEach((node, i) => {
+      const div = document.createElement("div");
+      div.className = "ota-node";
+      div.style.animationDelay = (i * 0.05) + "s";
+      div.innerHTML = `
+        <input type="checkbox" id="ota-node-${node}" value="${node}">
+        <label for="ota-node-${node}">${node}</label>`;
+      cont.appendChild(div);
+    });
+  }
+
+  async function submitOTA() {
+    const checkedNodes = [...document.querySelectorAll("#ota-nodes-list input:checked")].map(cb => cb.value);
+    if (!checkedNodes.length) {
+      alert("Please select at least one node.");
+      return;
+    }
+    for (const node of checkedNodes) {
+      const formData = new FormData();
+      formData.append("file", otaFile);
+      formData.append("Target_Gateway", otaGw);
+      formData.append("Target_GateWayLoc", otaLoc);
+      formData.append("Target_NodeID", node);
+      try {
+        const r = await fetch(`${API}/firmware/details`, { method: "POST", body: formData });
+        const res = await r.json();
+        console.log(`Uploaded for ${node}:`, res);
+      } catch (e) {
+        console.error(`Error uploading for ${node}:`, e);
+      }
+    }
+    alert("OTA updates submitted. Check console for details.");
+    goHome();
   }
 
   async function loadLocations() {
