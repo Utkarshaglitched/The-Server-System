@@ -4,7 +4,7 @@
 
 > The cloud management layer of The GateWay System.
 
-![Gateway Architecture](../reference.png)
+![Gateway Architecture](reference.png)
 <p style="font-size: xx-small;">This is AI generated image used for visual presentation}</p>
 
 It receives data from local gateways, provides centralized monitoring, stores firmware binaries, coordinates OTA deployments, and offers a web dashboard for managing gateways and IoT nodes across multiple locations.
